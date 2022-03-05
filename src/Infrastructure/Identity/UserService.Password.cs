@@ -1,6 +1,5 @@
 ﻿using FSH.WebApi.Application.Common.Exceptions;
 using FSH.WebApi.Application.Common.Mailing;
-using FSH.WebApi.Application.Identity;
 using FSH.WebApi.Application.Identity.Users.Password;
 using Microsoft.AspNetCore.WebUtilities;
 
@@ -10,6 +9,8 @@ internal partial class UserService
 {
     public async Task<string> ForgotPasswordAsync(ForgotPasswordRequest request, string origin)
     {
+        EnsureValidTenant();
+
         var user = await _userManager.FindByEmailAsync(request.Email.Normalize());
         if (user is null || !await _userManager.IsEmailConfirmedAsync(user))
         {
@@ -27,7 +28,7 @@ internal partial class UserService
             new List<string> { request.Email },
             _localizer["Reset Password"],
             _localizer[$"Your Password Reset Token is '{code}'. You can reset your password using the {endpointUri} Endpoint."]);
-        _jobService.Enqueue(() => _mailService.SendAsync(mailRequest));
+        _jobService.Enqueue(() => _mailService.SendAsync(mailRequest, CancellationToken.None));
 
         return _localizer["Password Reset Mail has been sent to your authorized Email."];
     }

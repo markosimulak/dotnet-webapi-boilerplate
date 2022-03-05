@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using FSH.WebApi.Application.Common.Exceptions;
 using FSH.WebApi.Application.Identity.Tokens;
+using FSH.WebApi.Infrastructure.Auth;
 using FSH.WebApi.Infrastructure.Auth.Jwt;
 using FSH.WebApi.Infrastructure.Mailing;
 using FSH.WebApi.Infrastructure.Multitenancy;
@@ -20,7 +21,7 @@ internal class TokenService : ITokenService
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IStringLocalizer<TokenService> _localizer;
-    private readonly MailSettings _mailSettings;
+    private readonly SecuritySettings _securitySettings;
     private readonly JwtSettings _jwtSettings;
     private readonly FSHTenantInfo? _currentTenant;
 
@@ -28,55 +29,47 @@ internal class TokenService : ITokenService
         UserManager<ApplicationUser> userManager,
         IOptions<JwtSettings> jwtSettings,
         IStringLocalizer<TokenService> localizer,
-        IOptions<MailSettings> mailSettings,
-        FSHTenantInfo? currentTenant)
+        FSHTenantInfo? currentTenant,
+        IOptions<SecuritySettings> securitySettings)
     {
         _userManager = userManager;
         _localizer = localizer;
-        _mailSettings = mailSettings.Value;
         _jwtSettings = jwtSettings.Value;
         _currentTenant = currentTenant;
+        _securitySettings = securitySettings.Value;
     }
 
     public async Task<TokenResponse> GetTokenAsync(TokenRequest request, string ipAddress, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_currentTenant?.Id))
+        if (string.IsNullOrWhiteSpace(_currentTenant?.Id)
+            || await _userManager.FindByEmailAsync(request.Email.Trim().Normalize()) is not { } user
+            || !await _userManager.CheckPasswordAsync(user, request.Password))
         {
-            throw new UnauthorizedException(_localizer["tenant.invalid"]);
-        }
 
-        var user = await _userManager.FindByEmailAsync(request.Email.Trim().Normalize());
-        if (user is null)
-        {
-            throw new UnauthorizedException(_localizer["auth.failed"]);
+            throw new UnauthorizedException(_localizer["Authentication Failed."]);
         }
 
         if (!user.IsActive)
         {
-            throw new UnauthorizedException(_localizer["identity.usernotactive"]);
+            throw new UnauthorizedException(_localizer["User Not Active. Please contact the administrator."]);
         }
 
-        if (_mailSettings.EnableVerification && !user.EmailConfirmed)
+        if (_securitySettings.RequireConfirmedAccount && !user.EmailConfirmed)
         {
-            throw new UnauthorizedException(_localizer["identity.emailnotconfirmed"]);
+            throw new UnauthorizedException(_localizer["E-Mail not confirmed."]);
         }
 
         if (_currentTenant.Id != MultitenancyConstants.Root.Id)
         {
             if (!_currentTenant.IsActive)
             {
-                throw new UnauthorizedException(_localizer["tenant.inactive"]);
+                throw new UnauthorizedException(_localizer["Tenant is not Active. Please contact the Application Administrator."]);
             }
 
             if (DateTime.UtcNow > _currentTenant.ValidUpto)
             {
-                throw new UnauthorizedException(_localizer["tenant.expired"]);
+                throw new UnauthorizedException(_localizer["Tenant Validity Has Expired. Please contact the Application Administrator."]);
             }
-        }
-
-        if (!await _userManager.CheckPasswordAsync(user, request.Password))
-        {
-            throw new UnauthorizedException(_localizer["identity.invalidcredentials"]);
         }
 
         return await GenerateTokensAndUpdateUser(user, ipAddress);
@@ -89,12 +82,12 @@ internal class TokenService : ITokenService
         var user = await _userManager.FindByEmailAsync(userEmail);
         if (user is null)
         {
-            throw new UnauthorizedException(_localizer["auth.failed"]);
+            throw new UnauthorizedException(_localizer["Authentication Failed."]);
         }
 
         if (user.RefreshToken != request.RefreshToken || user.RefreshTokenExpiryTime <= DateTime.UtcNow)
         {
-            throw new UnauthorizedException(_localizer["identity.invalidrefreshtoken"]);
+            throw new UnauthorizedException(_localizer["Invalid Refresh Token."]);
         }
 
         return await GenerateTokensAndUpdateUser(user, ipAddress);
@@ -171,7 +164,7 @@ internal class TokenService : ITokenService
                 SecurityAlgorithms.HmacSha256,
                 StringComparison.InvariantCultureIgnoreCase))
         {
-            throw new UnauthorizedException(_localizer["identity.invalidtoken"]);
+            throw new UnauthorizedException(_localizer["Invalid Token."]);
         }
 
         return principal;

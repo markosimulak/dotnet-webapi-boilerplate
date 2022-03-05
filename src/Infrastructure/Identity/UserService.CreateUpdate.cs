@@ -1,7 +1,6 @@
 ﻿using System.Security.Claims;
 using FSH.WebApi.Application.Common.Exceptions;
 using FSH.WebApi.Application.Common.Mailing;
-using FSH.WebApi.Application.Identity;
 using FSH.WebApi.Application.Identity.Users;
 using FSH.WebApi.Domain.Common;
 using FSH.WebApi.Domain.Identity;
@@ -124,7 +123,7 @@ internal partial class UserService
 
         var messages = new List<string> { string.Format(_localizer["User {0} Registered."], user.UserName) };
 
-        if (_mailSettings.EnableVerification && !string.IsNullOrEmpty(user.Email))
+        if (_securitySettings.RequireConfirmedAccount && !string.IsNullOrEmpty(user.Email))
         {
             // send verification email
             string emailVerificationUri = await GetEmailVerificationUriAsync(user, origin);
@@ -138,7 +137,7 @@ internal partial class UserService
                 new List<string> { user.Email },
                 _localizer["Confirm Registration"],
                 _templateService.GenerateEmailTemplate("email-confirmation", eMailModel));
-            _jobService.Enqueue(() => _mailService.SendAsync(mailRequest));
+            _jobService.Enqueue(() => _mailService.SendAsync(mailRequest, CancellationToken.None));
             messages.Add(_localizer[$"Please check {user.Email} to verify your account!"]);
         }
 
