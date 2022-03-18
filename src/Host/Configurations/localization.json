@@ -1,5 +1,7 @@
 {
   "LocalizationSettings": {
+    "EnableLocalization": true,
+    "ResourcesPath": "Localization",
     "SupportedCultures": [
       "en-US",
       "en",
@@ -10,10 +12,10 @@
       "it",
       "it-IT",
       "pt",
-      "pt-BR"
+      "nl",
+      "nl-NL"
     ],
-    "ResourcesPath": "Localization",
-    "DefaultRequestCulture": "en-US",
-    "EnableLocalization": true
+    "DefaultRequestCulture": "en",
+    "FallbackToParent": true
   }
 }
